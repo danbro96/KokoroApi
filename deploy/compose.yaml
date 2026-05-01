@@ -1,0 +1,25 @@
+services:
+  kokoro-api:
+    image: danbro96/kokoro-api:${IMAGE_TAG:-latest}
+    container_name: kokoro-api
+    environment:
+      Auth__ApiKeys__0__Key: ${KOKORO_API_KEY:?required}
+      Auth__ApiKeys__0__Name: ${KOKORO_API_KEY_NAME:-prod}
+      Auth__AllowedOrigins__0: ${ALLOWED_ORIGIN:-}
+      RateLimit__RequestsPerMinute: ${RATE_LIMIT:-60}
+      Kokoro__DefaultVoice: ${DEFAULT_VOICE:-af_heart}
+      Kokoro__MaxTextLength: ${MAX_TEXT_LENGTH:-4000}
+    ports:
+      - "${HOST_PORT:-40280}:8080"
+    volumes:
+      - kokoro-cache:/app/cache
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 90s
+    restart: unless-stopped
+
+volumes:
+  kokoro-cache:

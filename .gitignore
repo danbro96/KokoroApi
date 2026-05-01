@@ -1,0 +1,32 @@
+# .NET build output
+**/bin/
+**/obj/
+
+# IDE
+.vs/
+.idea/
+.vscode/
+*.user
+*.suo
+
+# Node (smoke test deps)
+node_modules/
+
+# Local artifacts
+smoke.wav
+*.wav
+!src/KokoroApi/wwwroot/**/*.wav
+
+# Runtime-downloaded ML model (~320 MB)
+**/kokoro.onnx
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Local secrets / overrides
+*.local.json
+appsettings.Development.local.json
+.env
+.env.*
+!.env.example

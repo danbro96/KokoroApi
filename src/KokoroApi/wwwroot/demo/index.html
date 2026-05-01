@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Kokoro TTS — live typing demo</title>
+<style>
+  body { font: 14px system-ui, sans-serif; max-width: 640px; margin: 2rem auto; padding: 0 1rem; }
+  textarea { width: 100%; height: 9rem; font: inherit; }
+  input, select, button { font: inherit; padding: 0.4rem 0.6rem; }
+  .row { display: flex; gap: 0.5rem; align-items: center; margin: 0.4rem 0; flex-wrap: wrap; }
+  #log { background: #f4f4f4; padding: 0.5rem; height: 9rem; overflow: auto; font: 12px monospace; white-space: pre-wrap; }
+  .ok { color: #060; } .err { color: #b00; } .muted { color: #777; }
+</style>
+</head>
+<body>
+<h1>Kokoro TTS live demo</h1>
+<div class="row">
+  <label>API key <input id="key" placeholder="X-API-Key value" size="32" /></label>
+  <button id="loadOptions">Load options</button>
+  <button id="connect">Connect</button>
+  <button id="cancel" disabled>Cancel</button>
+</div>
+<div class="row">
+  <label>Voice <select id="voice"><option value="af_heart">af_heart (default — load options for full list)</option></select></label>
+  <label>Speed <input id="speed" type="number" value="1.0" step="0.1" min="0.5" max="2.0" style="width:5em" /></label>
+</div>
+<textarea id="text" placeholder="Type here. Sentences are spoken on . ? ! and on flush (Enter)."></textarea>
+<div class="row">
+  <button id="flush" disabled>Flush (or press Enter)</button>
+  <span id="status" class="muted">disconnected</span>
+</div>
+<pre id="log"></pre>
+
+<script type="module">
+const $ = id => document.getElementById(id);
+const log = (msg) => {
+  const t = new Date().toISOString().slice(11, 23);
+  $('log').textContent += `${t} ${msg}\n`;
+  $('log').scrollTop = $('log').scrollHeight;
+};
+
+let ws = null;
+let ac = null;
+let nextStartAt = 0;
+const SAMPLE_RATE = 24000;
+
+function setStatus(s) { $('status').textContent = s; }
+
+function int16ToFloat32(buf) {
+  const view = new DataView(buf);
+  const out = new Float32Array(buf.byteLength / 2);
+  for (let i = 0; i < out.length; i++) out[i] = view.getInt16(i * 2, true) / 32768;
+  return out;
+}
+
+function playPcm(buf) {
+  const samples = int16ToFloat32(buf);
+  if (!samples.length) return;
+  const audioBuf = ac.createBuffer(1, samples.length, SAMPLE_RATE);
+  audioBuf.copyToChannel(samples, 0);
+  const src = ac.createBufferSource();
+  src.buffer = audioBuf;
+  src.connect(ac.destination);
+  const startAt = Math.max(ac.currentTime, nextStartAt);
+  src.start(startAt);
+  nextStartAt = startAt + audioBuf.duration;
+}
+
+const apiOrigin = location.origin;                                  // same-origin (served from API)
+const wsOrigin  = apiOrigin.replace(/^http/, 'ws');
+
+$('loadOptions').onclick = async () => {
+  const key = $('key').value.trim();
+  if (!key) { alert('Set an API key.'); return; }
+  try {
+    const r = await fetch(`${apiOrigin}/options`, { headers: { 'X-API-Key': key } });
+    if (!r.ok) { log(`options HTTP ${r.status}`); return; }
+    const opts = await r.json();
+    const select = $('voice');
+    select.innerHTML = '';
+    for (const v of opts.voices) {
+      const o = document.createElement('option');
+      o.value = v.id;
+      o.textContent = `${v.name}  (${v.language}, ${v.gender})`;
+      if (v.id === opts.defaultVoice) o.selected = true;
+      select.appendChild(o);
+    }
+    const speed = $('speed');
+    speed.min = opts.speed.min;
+    speed.max = opts.speed.max;
+    speed.value = opts.speed.default;
+    log(`loaded ${opts.voices.length} voices, speed ${opts.speed.min}–${opts.speed.max}`);
+  } catch (e) {
+    log('options error: ' + e.message);
+  }
+};
+
+$('connect').onclick = async () => {
+  const key = $('key').value.trim();
+  if (!key) { alert('Set an API key.'); return; }
+  ac = ac || new AudioContext({ sampleRate: SAMPLE_RATE });
+  if (ac.state === 'suspended') await ac.resume();
+  nextStartAt = 0;
+
+  const url = `${wsOrigin}/tts/stream?api_key=${encodeURIComponent(key)}`;
+  ws = new WebSocket(url);
+  ws.binaryType = 'arraybuffer';
+  ws.onopen = () => {
+    log('connected');
+    setStatus('connected');
+    ws.send(JSON.stringify({
+      type: 'config',
+      voice: $('voice').value || 'af_heart',
+      speed: parseFloat($('speed').value) || 1.0
+    }));
+    $('flush').disabled = false; $('cancel').disabled = false;
+  };
+  ws.onmessage = ev => {
+    if (typeof ev.data === 'string') {
+      log('< ' + ev.data);
+    } else {
+      log(`< pcm ${ev.data.byteLength} bytes`);
+      playPcm(ev.data);
+    }
+  };
+  ws.onerror = e => log('error: ' + (e.message || 'ws error'));
+  ws.onclose = ev => {
+    log('closed: ' + ev.code + ' ' + ev.reason);
+    setStatus('disconnected');
+    $('flush').disabled = true; $('cancel').disabled = true;
+  };
+};
+
+const textPipe = (() => {
+  let last = '';
+  let pending = '';
+  let timer = null;
+  const flushPending = () => {
+    clearTimeout(timer); timer = null;
+    if (!pending || !ws || ws.readyState !== WebSocket.OPEN) return;
+    ws.send(JSON.stringify({ type: 'text', delta: pending }));
+    pending = '';
+  };
+  return {
+    onInput() {
+      const cur = $('text').value;
+      if (cur.length < last.length || !cur.startsWith(last)) {
+        pending = ''; last = cur; return;
+      }
+      const delta = cur.slice(last.length);
+      last = cur;
+      if (!delta) return;
+      pending += delta;
+      clearTimeout(timer);
+      timer = setTimeout(flushPending, 80);
+    },
+    flushNow: flushPending,
+    reset() { last = $('text').value; pending = ''; clearTimeout(timer); timer = null; }
+  };
+})();
+
+$('text').addEventListener('input', () => textPipe.onInput());
+$('text').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    doFlush();
+  }
+});
+function doFlush() {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  textPipe.flushNow();
+  ws.send(JSON.stringify({ type: 'flush' }));
+}
+$('flush').onclick = doFlush;
+$('cancel').onclick = () => {
+  if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'cancel' }));
+  textPipe.reset();
+  if (ac) { ac.close(); ac = new AudioContext({ sampleRate: SAMPLE_RATE }); nextStartAt = 0; }
+};
+</script>
+</body>
+</html>

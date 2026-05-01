@@ -1,0 +1,10 @@
+**/bin/
+**/obj/
+**/.vs/
+**/.idea/
+**/.vscode/
+node_modules/
+smoke.wav
+smoke-ws.mjs
+package.json
+package-lock.json
