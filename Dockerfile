@@ -3,7 +3,9 @@ WORKDIR /src
 COPY src/KokoroApi/KokoroApi.csproj src/KokoroApi/
 RUN dotnet restore src/KokoroApi/KokoroApi.csproj
 COPY src/KokoroApi/ src/KokoroApi/
-RUN dotnet publish src/KokoroApi/KokoroApi.csproj -c Release -o /out --no-restore
+RUN dotnet publish src/KokoroApi/KokoroApi.csproj -c Release -o /out --no-restore \
+ && cp -r src/KokoroApi/bin/Release/net10.0/voices /out/voices \
+ && cp -r src/KokoroApi/bin/Release/net10.0/espeak /out/espeak
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 RUN apt-get update \
