@@ -9,6 +9,9 @@ services:
       RateLimit__RequestsPerMinute: ${RATE_LIMIT:-60}
       Kokoro__DefaultVoice: ${DEFAULT_VOICE:-af_heart}
       Kokoro__MaxTextLength: ${MAX_TEXT_LENGTH:-4000}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      OTEL_EXPORTER_OTLP_PROTOCOL: ${OTEL_EXPORTER_OTLP_PROTOCOL:-grpc}
+      OTEL_RESOURCE_ATTRIBUTES: ${OTEL_RESOURCE_ATTRIBUTES:-deployment.environment=prod,host.name=medelynas}
     ports:
       - "${HOST_PORT:-40280}:8080"
     volumes:
@@ -20,6 +23,16 @@ services:
       retries: 5
       start_period: 90s
     restart: unless-stopped
+    networks:
+      - default
+      - medelynas_telemetry
 
 volumes:
   kokoro-cache:
+
+networks:
+  default:
+    driver: bridge
+  medelynas_telemetry:
+    external: true
+    name: medelynas_telemetry

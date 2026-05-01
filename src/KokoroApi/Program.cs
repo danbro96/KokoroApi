@@ -5,6 +5,10 @@ using KokoroApi.Endpoints;
 using KokoroApi.Services;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.RateLimiting;
+using OpenTelemetry.Logs;
+using OpenTelemetry.Metrics;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -57,6 +61,32 @@ builder.Services.Configure<Microsoft.AspNetCore.Http.Json.JsonOptions>(o =>
 
 builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(o => o.MultipartBodyLengthLimit = 16_384);
 builder.WebHost.ConfigureKestrel(o => o.Limits.MaxRequestBodySize = 64_000);
+
+var otlpEndpoint = builder.Configuration["OTEL_EXPORTER_OTLP_ENDPOINT"];
+if (!string.IsNullOrWhiteSpace(otlpEndpoint))
+{
+    builder.Services.AddOpenTelemetry()
+        .ConfigureResource(r => r.AddService(
+            serviceName: "kokoro-api",
+            serviceVersion: typeof(Program).Assembly.GetName().Version?.ToString() ?? "0.0.0"))
+        .WithTracing(t => t
+            .AddSource("KokoroApi.Synthesis")
+            .AddAspNetCoreInstrumentation(o => o.RecordException = true)
+            .AddHttpClientInstrumentation()
+            .AddOtlpExporter())
+        .WithMetrics(m => m
+            .AddAspNetCoreInstrumentation()
+            .AddHttpClientInstrumentation()
+            .AddRuntimeInstrumentation()
+            .AddOtlpExporter());
+
+    builder.Logging.AddOpenTelemetry(o =>
+    {
+        o.IncludeFormattedMessage = true;
+        o.IncludeScopes = true;
+        o.AddOtlpExporter();
+    });
+}
 
 var app = builder.Build();
 

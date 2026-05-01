@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using KokoroApi.Models;
 using KokoroApi.Streaming;
 using KokoroSharp;
@@ -9,6 +10,8 @@ namespace KokoroApi.Services;
 
 public sealed class KokoroSynthesizer : IKokoroSynthesizer, IHostedService, IAsyncDisposable
 {
+    static readonly ActivitySource ActivitySource = new("KokoroApi.Synthesis");
+
     readonly ILogger<KokoroSynthesizer> _log;
     readonly KokoroOptions _opts;
     readonly TaskCompletionSource<KokoroTTS> _readyTcs =
@@ -89,6 +92,8 @@ public sealed class KokoroSynthesizer : IKokoroSynthesizer, IHostedService, IAsy
 
     async Task<float[]> SynthesizeFloatsAsync(string text, string? voiceName, float? speed, CancellationToken ct)
     {
+        using var activity = ActivitySource.StartActivity("synthesize");
+
         var tts = _tts ?? await _readyTcs.Task.WaitAsync(ct);
         var trimmed = text?.Trim() ?? string.Empty;
         if (trimmed.Length == 0) return Array.Empty<float>();
@@ -106,6 +111,12 @@ public sealed class KokoroSynthesizer : IKokoroSynthesizer, IHostedService, IAsy
 
         var tokens = Tokenizer.Tokenize(trimmed, langCode, preprocess: true);
         var segments = SplitTokensIfNeeded(tokens);
+
+        activity?.SetTag("voice", resolvedVoice.Name);
+        activity?.SetTag("text.length", trimmed.Length);
+        activity?.SetTag("speed", resolvedSpeed);
+        activity?.SetTag("segments.count", segments.Count);
+        activity?.SetTag("lang", langCode);
 
         var tcs = new TaskCompletionSource<float[]>(TaskCreationOptions.RunContinuationsAsynchronously);
         var collected = new List<float>(segments.Sum(s => s.Length) * 600);
