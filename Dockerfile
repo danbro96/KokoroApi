@@ -13,6 +13,7 @@ RUN mkdir -p /app/bin /app/cache
 COPY --from=build /out /app/bin
 WORKDIR /app/cache
 ENV ASPNETCORE_URLS=http://0.0.0.0:8080 \
+    ASPNETCORE_CONTENTROOT=/app/bin \
     DOTNET_RUNNING_IN_CONTAINER=true \
     DOTNET_EnableDiagnostics=0
 EXPOSE 8080
