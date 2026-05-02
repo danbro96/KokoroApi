@@ -10,12 +10,13 @@ services:
       Kokoro__DefaultVoice: ${DEFAULT_VOICE:-af_heart}
       Kokoro__MaxTextLength: ${MAX_TEXT_LENGTH:-4000}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
-      OTEL_EXPORTER_OTLP_PROTOCOL: ${OTEL_EXPORTER_OTLP_PROTOCOL:-grpc}
+      OTEL_EXPORTER_OTLP_PROTOCOL: ${OTEL_EXPORTER_OTLP_PROTOCOL:-http/protobuf}
+      OTEL_EXPORTER_OTLP_HEADERS: ${OTEL_EXPORTER_OTLP_HEADERS:-}
       OTEL_RESOURCE_ATTRIBUTES: ${OTEL_RESOURCE_ATTRIBUTES:-deployment.environment=prod,host.name=medelynas}
     ports:
       - "${HOST_PORT:-40280}:8080"
     volumes:
-      - kokoro-cache:/app/cache
+      - /mnt/tank2/appdata/kokoro_api:/app/cache
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:8080/healthz || exit 1"]
       interval: 30s
@@ -26,9 +27,6 @@ services:
     networks:
       - default
       - medelynas_telemetry
-
-volumes:
-  kokoro-cache:
 
 networks:
   default:
