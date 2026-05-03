@@ -8,9 +8,9 @@ namespace KokoroApi.Handlers;
 
 public sealed class SynthesisHandler
 {
-    readonly IKokoroSynthesizer _synth;
-    readonly KokoroOptions _opts;
-    readonly ILogger<SynthesisHandler> _log;
+    private readonly IKokoroSynthesizer _synth;
+    private readonly KokoroOptions _opts;
+    private readonly ILogger<SynthesisHandler> _log;
 
     public SynthesisHandler(
         IKokoroSynthesizer synth,
@@ -47,10 +47,12 @@ public sealed class SynthesisHandler
         SynthesizeAsync(SynthesizeRequest req, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(req.Text))
+        {
             return TypedResults.ValidationProblem(new Dictionary<string, string[]>
             {
                 ["text"] = ["text is required"],
             });
+        }
 
         try
         {

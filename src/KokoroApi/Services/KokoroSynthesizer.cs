@@ -1,24 +1,23 @@
-using System.Diagnostics;
 using KokoroApi.Models;
 using KokoroApi.Streaming;
 using KokoroSharp;
 using KokoroSharp.Core;
 using KokoroSharp.Processing;
 using Microsoft.Extensions.Options;
+using System.Diagnostics;
 
 namespace KokoroApi.Services;
 
 public sealed class KokoroSynthesizer : IKokoroSynthesizer, IHostedService, IAsyncDisposable
 {
-    static readonly ActivitySource ActivitySource = new("KokoroApi.Synthesis");
+    private static readonly ActivitySource _activitySource = new("KokoroApi.Synthesis");
 
-    readonly ILogger<KokoroSynthesizer> _log;
-    readonly KokoroOptions _opts;
-    readonly TaskCompletionSource<KokoroTTS> _readyTcs =
-        new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly ILogger<KokoroSynthesizer> _log;
+    private readonly KokoroOptions _opts;
+    private readonly TaskCompletionSource<KokoroTTS> _readyTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-    KokoroTTS? _tts;
-    int _lastReportedPercent = -1;
+    private KokoroTTS? _tts;
+    private int _lastReportedPercent = -1;
 
     public KokoroSynthesizer(ILogger<KokoroSynthesizer> log, IOptions<KokoroOptions> opts)
     {
@@ -28,7 +27,8 @@ public sealed class KokoroSynthesizer : IKokoroSynthesizer, IHostedService, IAsy
 
     public Task StartAsync(CancellationToken ct)
     {
-        _ = Task.Run(async () =>
+        _ = Task.Run(
+            async () =>
         {
             try
             {
@@ -36,8 +36,7 @@ public sealed class KokoroSynthesizer : IKokoroSynthesizer, IHostedService, IAsy
                 if (Directory.Exists(voicesDir))
                 {
                     KokoroVoiceManager.LoadVoicesFromPath(voicesDir);
-                    _log.LogInformation("Loaded {Count} voices from {Path}.",
-                        KokoroVoiceManager.Voices.Count, voicesDir);
+                    _log.LogInformation("Loaded {Count} voices from {Path}.", KokoroVoiceManager.Voices.Count, voicesDir);
                 }
                 else
                 {
@@ -49,7 +48,7 @@ public sealed class KokoroSynthesizer : IKokoroSynthesizer, IHostedService, IAsy
                     KModel.float32,
                     OnDownloadProgress: p =>
                     {
-                        var pct = (int)(p * 100);
+                        var pct = (int) (p * 100);
                         if (pct != _lastReportedPercent && pct % 10 == 0)
                         {
                             _lastReportedPercent = pct;
@@ -75,8 +74,15 @@ public sealed class KokoroSynthesizer : IKokoroSynthesizer, IHostedService, IAsy
     public async Task<bool> WaitReadyAsync(CancellationToken ct)
     {
         using var reg = ct.Register(() => _readyTcs.TrySetCanceled(ct));
-        try { await _readyTcs.Task; return true; }
-        catch { return false; }
+        try
+        {
+            await _readyTcs.Task;
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     public async Task<byte[]> SynthesizeWavAsync(string text, string? voice, float? speed, CancellationToken ct)
@@ -90,9 +96,9 @@ public sealed class KokoroSynthesizer : IKokoroSynthesizer, IHostedService, IAsy
         return await SynthesizeFloatsAsync(segment, voice, speed, ct);
     }
 
-    async Task<float[]> SynthesizeFloatsAsync(string text, string? voiceName, float? speed, CancellationToken ct)
+    private async Task<float[]> SynthesizeFloatsAsync(string text, string? voiceName, float? speed, CancellationToken ct)
     {
-        using var activity = ActivitySource.StartActivity("synthesize");
+        using var activity = _activitySource.StartActivity("synthesize");
 
         var tts = _tts ?? await _readyTcs.Task.WaitAsync(ct);
         var trimmed = text?.Trim() ?? string.Empty;
@@ -130,6 +136,7 @@ public sealed class KokoroSynthesizer : IKokoroSynthesizer, IHostedService, IAsy
                 {
                     lock (collected) collected.AddRange(samples);
                 }
+
                 if (Interlocked.Decrement(ref pending) == 0)
                 {
                     float[] arr;
@@ -140,11 +147,18 @@ public sealed class KokoroSynthesizer : IKokoroSynthesizer, IHostedService, IAsy
         }
 
         var job = new KokoroJob { Steps = steps };
-        ((KokoroEngine)tts).EnqueueJob(job);
+        ((KokoroEngine) tts).EnqueueJob(job);
 
         using var reg = ct.Register(() =>
         {
-            try { job.Cancel(); } catch { }
+            try
+            {
+                job.Cancel();
+            }
+            catch
+            {
+            }
+
             tcs.TrySetCanceled(ct);
         });
 
@@ -167,7 +181,7 @@ public sealed class KokoroSynthesizer : IKokoroSynthesizer, IHostedService, IAsy
             .ToList();
     }
 
-    static string FriendlyName(string voiceId)
+    private static string FriendlyName(string voiceId)
     {
         // Voice IDs follow Kokoro's "<lang><gender>_<name>" convention; strip the prefix.
         var i = voiceId.IndexOf('_');
@@ -176,20 +190,20 @@ public sealed class KokoroSynthesizer : IKokoroSynthesizer, IHostedService, IAsy
         return char.ToUpperInvariant(n[0]) + n[1..];
     }
 
-    static bool EndsWithTerminator(string s)
+    private static bool EndsWithTerminator(string s)
     {
         var c = s[^1];
         return c is '.' or '!' or '?' or ';' or ':' or '—' or ',' or '"' or '\'';
     }
 
-    static KokoroVoice ResolveVoice(string name)
+    private static KokoroVoice ResolveVoice(string name)
     {
         var v = KokoroVoiceManager.GetVoice(name);
         if (v is null) throw new ArgumentException($"Unknown voice '{name}'.");
         return v;
     }
 
-    static List<int[]> SplitTokensIfNeeded(int[] tokens)
+    private static List<int[]> SplitTokensIfNeeded(int[] tokens)
     {
         // KokoroSharp's segmentation system handles the per-step token-count cap.
         // For short inputs SplitToSegments returns a single-element list.

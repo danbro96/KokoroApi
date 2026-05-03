@@ -1,18 +1,16 @@
-using System.Text.Json.Serialization;
-using System.Threading.RateLimiting;
 using KokoroApi.Auth;
 using KokoroApi.Endpoints;
 using KokoroApi.Handlers;
-using KokoroApi.Models;
 using KokoroApi.Services;
-using Microsoft.AspNetCore.Authentication;
-using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.OpenApi;
 using OpenTelemetry.Logs;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 using Scalar.AspNetCore;
+using System.Text.Json.Serialization;
+using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -25,24 +23,44 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<KokoroSynthesizer>
 
 builder.Services.AddScoped<SynthesisHandler>();
 
-builder.Services.AddOpenApi(opts =>
+builder.Services.AddOpenApi("v1", options =>
 {
-    opts.AddDocumentTransformer((doc, _, _) =>
+    options.AddDocumentTransformer((document, context, _) =>
     {
-        doc.Components ??= new();
-        doc.Components.SecuritySchemes ??= new Dictionary<string, IOpenApiSecurityScheme>();
-        doc.Components.SecuritySchemes["ApiKey"] = new OpenApiSecurityScheme
+        document.Info = new()
+        {
+            Title = "KokoroApi",
+            Version = "v1",
+            Description =
+                "Self-hosted streaming text-to-speech API powered by Kokoro 82M (KokoroSharp). " +
+                "REST endpoints for discrete synthesis and a WebSocket stream at `/tts/stream`. " +
+                "Authenticate by sending your key in the `X-API-Key` header.",
+        };
+        document.Components ??= new();
+        document.Components.SecuritySchemes ??= new Dictionary<string, IOpenApiSecurityScheme>();
+        document.Components.SecuritySchemes["ApiKey"] = new OpenApiSecurityScheme
         {
             Type = SecuritySchemeType.ApiKey,
             In = ParameterLocation.Header,
-            Name = "X-API-Key",
-            Description = "API key issued for the calling client.",
+            Name = ApiKeyAuthOptions.HeaderName,
+            Description = "API key. Send in the X-API-Key header.",
         };
-        doc.Security ??= new List<OpenApiSecurityRequirement>();
-        doc.Security.Add(new OpenApiSecurityRequirement
+        return Task.CompletedTask;
+    });
+    options.AddOperationTransformer((operation, context, _) =>
+    {
+        var endpointMetadata = context.Description.ActionDescriptor.EndpointMetadata;
+        var requiresAuth = endpointMetadata.OfType<IAuthorizeData>().Any()
+                        && !endpointMetadata.OfType<IAllowAnonymous>().Any();
+        if (requiresAuth)
         {
-            [new OpenApiSecuritySchemeReference("ApiKey", doc)] = []
-        });
+            operation.Security ??= new List<OpenApiSecurityRequirement>();
+            operation.Security.Add(new OpenApiSecurityRequirement
+            {
+                [new OpenApiSecuritySchemeReference("ApiKey", context.Document)] = new List<string>(),
+            });
+        }
+
         return Task.CompletedTask;
     });
 });
@@ -69,7 +87,7 @@ builder.Services.AddRateLimiter(o =>
             TokensPerPeriod = permitsPerMinute,
             ReplenishmentPeriod = TimeSpan.FromMinutes(1),
             QueueLimit = 0,
-            AutoReplenishment = true
+            AutoReplenishment = true,
         });
     });
 });
@@ -126,23 +144,17 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.UseRateLimiter();
 
-app.MapOpenApi().AllowAnonymous();
-app.MapScalarApiReference("/docs", opts =>
-{
-    opts.WithTitle("KokoroApi");
-    opts.WithDefaultHttpClient(ScalarTarget.JavaScript, ScalarClient.Fetch);
-}).AllowAnonymous();
+app.MapOpenApi("/openapi/{documentName}.json").AllowAnonymous();
+app.MapScalarApiReference("/scalar", o => o
+        .WithTitle("KokoroApi")
+        .WithTheme(ScalarTheme.BluePlanet))
+    .AllowAnonymous();
 
 app.MapGet("/", () => TypedResults.Redirect("/demo/"))
    .ExcludeFromDescription()
    .AllowAnonymous();
 
-app.MapGet("/healthz", () => TypedResults.Ok(new HealthResponse { Status = "ok" }))
-   .AllowAnonymous()
-   .WithTags("Meta")
-   .WithSummary("Liveness probe.")
-   .WithDescription("Returns `{ \"status\": \"ok\" }` when the process is up. Used by the TrueNAS healthcheck. No auth.");
-
+app.MapHealthEndpoint();
 app.MapOptionsEndpoint().RequireAuthorization();
 app.MapSynthesize().RequireAuthorization();
 app.MapStream().RequireAuthorization();

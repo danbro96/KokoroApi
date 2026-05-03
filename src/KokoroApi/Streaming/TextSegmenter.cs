@@ -1,4 +1,4 @@
-using System.Text;
+﻿using System.Text;
 
 namespace KokoroApi.Streaming;
 
@@ -54,12 +54,14 @@ public sealed class TextSegmenter
                     cut = j + 1;
                     break;
                 }
+
                 if (c == ',' && (j - i) + 1 >= _minSegmentChars)
                 {
                     cut = j + 1;
                     break;
                 }
             }
+
             if (cut < 0) break;
             var segment = s[i..cut].Trim();
             if (segment.Length > 0) result.Add(segment);
@@ -76,6 +78,7 @@ public sealed class TextSegmenter
         {
             _buffer.Append(remaining);
         }
+
         return result;
     }
 }

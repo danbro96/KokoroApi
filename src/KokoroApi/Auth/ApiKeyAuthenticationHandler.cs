@@ -1,9 +1,9 @@
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.Extensions.Options;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Encodings.Web;
-using Microsoft.AspNetCore.Authentication;
-using Microsoft.Extensions.Options;
 
 namespace KokoroApi.Auth;
 
@@ -13,7 +13,9 @@ public sealed class ApiKeyAuthenticationHandler : AuthenticationHandler<ApiKeyAu
         IOptionsMonitor<ApiKeyAuthOptions> options,
         ILoggerFactory logger,
         UrlEncoder encoder)
-        : base(options, logger, encoder) { }
+        : base(options, logger, encoder)
+    {
+    }
 
     protected override Task<AuthenticateResult> HandleAuthenticateAsync()
     {
@@ -28,7 +30,7 @@ public sealed class ApiKeyAuthenticationHandler : AuthenticationHandler<ApiKeyAu
         var claims = new[]
         {
             new Claim(ClaimTypes.Name, match.Name),
-            new Claim("api_key_name", match.Name)
+            new Claim("api_key_name", match.Name),
         };
         var identity = new ClaimsIdentity(claims, Scheme.Name);
         var principal = new ClaimsPrincipal(identity);
@@ -36,7 +38,7 @@ public sealed class ApiKeyAuthenticationHandler : AuthenticationHandler<ApiKeyAu
         return Task.FromResult(AuthenticateResult.Success(ticket));
     }
 
-    static string? ExtractKey(HttpRequest req)
+    private static string? ExtractKey(HttpRequest req)
     {
         if (req.Headers.TryGetValue(ApiKeyAuthOptions.HeaderName, out var hdr) && hdr.Count > 0)
             return hdr[0];
@@ -45,7 +47,7 @@ public sealed class ApiKeyAuthenticationHandler : AuthenticationHandler<ApiKeyAu
         return null;
     }
 
-    static ApiKeyEntry? MatchKey(string presented, IReadOnlyList<ApiKeyEntry> keys)
+    private static ApiKeyEntry? MatchKey(string presented, IReadOnlyList<ApiKeyEntry> keys)
     {
         var presentedBytes = Encoding.UTF8.GetBytes(presented);
         foreach (var entry in keys)
@@ -55,6 +57,7 @@ public sealed class ApiKeyAuthenticationHandler : AuthenticationHandler<ApiKeyAu
             if (CryptographicOperations.FixedTimeEquals(presentedBytes, keyBytes))
                 return entry;
         }
+
         return null;
     }
 }
