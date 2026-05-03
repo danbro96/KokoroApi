@@ -19,7 +19,7 @@ services:
       - /mnt/tank2/appdata/kokoro_api:/app/cache
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:8080/healthz || exit 1"]
-      interval: 30s
+      interval: 60s
       timeout: 5s
       retries: 5
       start_period: 90s
