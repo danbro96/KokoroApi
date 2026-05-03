@@ -1,34 +1,17 @@
-using KokoroApi.Models;
-using KokoroApi.Services;
-using KokoroSharp.Core;
-using Microsoft.Extensions.Options;
+using KokoroApi.Handlers;
 
 namespace KokoroApi.Endpoints;
 
 public static class OptionsEndpoint
 {
-    public static IEndpointConventionBuilder MapOptionsEndpoint(this IEndpointRouteBuilder app)
-    {
-        return app.MapGet("/options", async (
-            IKokoroSynthesizer synth,
-            IOptions<KokoroOptions> kopts,
-            CancellationToken ct) =>
-        {
-            if (!await synth.WaitReadyAsync(ct))
-                return Results.Problem("Model not ready.", statusCode: StatusCodes.Status503ServiceUnavailable);
-
-            var opts = kopts.Value;
-            var voices = synth.GetVoices();
-            var languages = voices.Select(v => v.Language).Distinct().OrderBy(l => l).ToList();
-            var genders = Enum.GetValues<KokoroGender>().Where(g => g != KokoroGender.Both).ToList();
-
-            return Results.Ok(new OptionsResponse(
-                DefaultVoice: opts.DefaultVoice,
-                Speed: new SpeedRange(opts.SpeedMin, opts.SpeedMax, opts.DefaultSpeed),
-                MaxTextLength: opts.MaxTextLength,
-                Voices: voices,
-                Languages: languages,
-                Genders: genders));
-        });
-    }
+    public static IEndpointConventionBuilder MapOptionsEndpoint(this IEndpointRouteBuilder app) =>
+        app.MapGet("/options", (SynthesisHandler h, CancellationToken ct) => h.GetOptionsAsync(ct))
+            .WithTags("Meta")
+            .WithSummary("Server capabilities and runtime defaults.")
+            .WithDescription(
+                """
+                Returns the configured default voice, the speed bounds, the max text length the
+                `/tts` endpoint accepts, and the catalogue of voices supported by the loaded
+                Kokoro model. 503 while the model is still downloading on first start.
+                """);
 }

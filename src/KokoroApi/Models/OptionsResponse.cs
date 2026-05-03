@@ -2,18 +2,27 @@ using KokoroSharp.Core;
 
 namespace KokoroApi.Models;
 
-public sealed record VoiceInfo(
-    string Id,
-    string Name,
-    KokoroLanguage Language,
-    KokoroGender Gender);
+public sealed class VoiceInfo
+{
+    public required string Id { get; set; }
+    public required string Name { get; set; }
+    public required KokoroLanguage Language { get; set; }
+    public required KokoroGender Gender { get; set; }
+}
 
-public sealed record SpeedRange(float Min, float Max, float Default);
+public sealed class SpeedRange
+{
+    public required float Min { get; set; }
+    public required float Max { get; set; }
+    public required float Default { get; set; }
+}
 
-public sealed record OptionsResponse(
-    string DefaultVoice,
-    SpeedRange Speed,
-    int MaxTextLength,
-    IReadOnlyList<VoiceInfo> Voices,
-    IReadOnlyList<KokoroLanguage> Languages,
-    IReadOnlyList<KokoroGender> Genders);
+public sealed class OptionsResponse
+{
+    public required string DefaultVoice { get; set; }
+    public required SpeedRange Speed { get; set; }
+    public required int MaxTextLength { get; set; }
+    public required IReadOnlyList<VoiceInfo> Voices { get; set; }
+    public required IReadOnlyList<KokoroLanguage> Languages { get; set; }
+    public required IReadOnlyList<KokoroGender> Genders { get; set; }
+}

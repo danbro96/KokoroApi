@@ -154,7 +154,13 @@ public sealed class KokoroSynthesizer : IKokoroSynthesizer, IHostedService, IAsy
     public IReadOnlyList<VoiceInfo> GetVoices()
     {
         return KokoroVoiceManager.Voices
-            .Select(v => new VoiceInfo(v.Name, FriendlyName(v.Name), v.Language, v.Gender))
+            .Select(v => new VoiceInfo
+            {
+                Id = v.Name,
+                Name = FriendlyName(v.Name),
+                Language = v.Language,
+                Gender = v.Gender,
+            })
             .OrderBy(v => v.Language)
             .ThenBy(v => v.Gender)
             .ThenBy(v => v.Id)

@@ -2,13 +2,17 @@ using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
 using KokoroApi.Auth;
 using KokoroApi.Endpoints;
+using KokoroApi.Handlers;
+using KokoroApi.Models;
 using KokoroApi.Services;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.OpenApi;
 using OpenTelemetry.Logs;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
+using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -18,6 +22,30 @@ builder.Services.Configure<ApiKeyAuthOptions>(builder.Configuration.GetSection("
 builder.Services.AddSingleton<KokoroSynthesizer>();
 builder.Services.AddSingleton<IKokoroSynthesizer>(sp => sp.GetRequiredService<KokoroSynthesizer>());
 builder.Services.AddHostedService(sp => sp.GetRequiredService<KokoroSynthesizer>());
+
+builder.Services.AddScoped<SynthesisHandler>();
+
+builder.Services.AddOpenApi(opts =>
+{
+    opts.AddDocumentTransformer((doc, _, _) =>
+    {
+        doc.Components ??= new();
+        doc.Components.SecuritySchemes ??= new Dictionary<string, IOpenApiSecurityScheme>();
+        doc.Components.SecuritySchemes["ApiKey"] = new OpenApiSecurityScheme
+        {
+            Type = SecuritySchemeType.ApiKey,
+            In = ParameterLocation.Header,
+            Name = "X-API-Key",
+            Description = "API key issued for the calling client.",
+        };
+        doc.Security ??= new List<OpenApiSecurityRequirement>();
+        doc.Security.Add(new OpenApiSecurityRequirement
+        {
+            [new OpenApiSecuritySchemeReference("ApiKey", doc)] = []
+        });
+        return Task.CompletedTask;
+    });
+});
 
 builder.Services
     .AddAuthentication(ApiKeyAuthOptions.SchemeName)
@@ -98,8 +126,22 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.UseRateLimiter();
 
-app.MapGet("/", () => Results.Redirect("/demo/")).AllowAnonymous();
-app.MapGet("/healthz", () => Results.Ok(new { status = "ok" })).AllowAnonymous();
+app.MapOpenApi().AllowAnonymous();
+app.MapScalarApiReference("/docs", opts =>
+{
+    opts.WithTitle("KokoroApi");
+    opts.WithDefaultHttpClient(ScalarTarget.JavaScript, ScalarClient.Fetch);
+}).AllowAnonymous();
+
+app.MapGet("/", () => TypedResults.Redirect("/demo/"))
+   .ExcludeFromDescription()
+   .AllowAnonymous();
+
+app.MapGet("/healthz", () => TypedResults.Ok(new HealthResponse { Status = "ok" }))
+   .AllowAnonymous()
+   .WithTags("Meta")
+   .WithSummary("Liveness probe.")
+   .WithDescription("Returns `{ \"status\": \"ok\" }` when the process is up. Used by the TrueNAS healthcheck. No auth.");
 
 app.MapOptionsEndpoint().RequireAuthorization();
 app.MapSynthesize().RequireAuthorization();
