@@ -16,5 +16,6 @@ public static class HealthEndpoint
                 TrueNAS / Docker healthcheck. Does *not* wait for the Kokoro model to finish
                 loading — readiness is reported by `/options` returning 503 until the model is
                 ready. Anonymous — no API key required.
-                """);
+                """)
+            .Produces<HealthResponse>(StatusCodes.Status200OK);
 }

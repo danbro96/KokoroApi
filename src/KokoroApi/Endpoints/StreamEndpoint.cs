@@ -41,6 +41,8 @@ public static class StreamEndpoint
               Text frames   — `{type:"segment_start", id, text}`,
                               `{type:"segment_end",   id}`,
                               `{type:"error",         message}`
-            """);
+            """)
+        .Produces(StatusCodes.Status101SwitchingProtocols)
+        .Produces(StatusCodes.Status426UpgradeRequired);
     }
 }
