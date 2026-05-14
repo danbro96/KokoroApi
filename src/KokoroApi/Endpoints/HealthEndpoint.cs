@@ -8,6 +8,7 @@ public static class HealthEndpoint
     public static IEndpointConventionBuilder MapHealthEndpoint(this IEndpointRouteBuilder app) =>
         app.MapGet("/healthz", Ok<HealthResponse> () => TypedResults.Ok(new HealthResponse { Status = "ok" }))
             .AllowAnonymous()
+            .DisableHttpMetrics()
             .WithTags("Meta")
             .WithSummary("Liveness probe.")
             .WithDescription(
